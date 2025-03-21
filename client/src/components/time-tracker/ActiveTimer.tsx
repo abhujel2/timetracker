@@ -67,7 +67,7 @@ export default function ActiveTimer() {
             onClick={timer.stopTimer}
             disabled={timer.isLoading || !timer.isRunning}
           >
-            <Stop className="text-primary-foreground" />
+            <Square className="text-primary-foreground" />
           </Button>
           
           <Button size="icon" variant="secondary" className="bg-accent hover:bg-opacity-80 transition-all">

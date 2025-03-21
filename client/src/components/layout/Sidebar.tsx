@@ -54,19 +54,20 @@ export default function Sidebar() {
               
             return (
               <li key={item.name}>
-                <Link href={item.href}>
-                  <a className={cn(
+                <Link 
+                  href={item.href}
+                  className={cn(
                     "flex items-center rounded-lg p-2 text-sm transition-all duration-200 relative",
                     isActive 
                       ? "bg-primary bg-opacity-10 text-primary hover:bg-primary hover:bg-opacity-20" 
                       : "text-foreground hover:bg-accent transition-all"
-                  )}>
-                    <div className="w-6 text-center">
-                      {item.icon}
-                    </div>
-                    <span className="hidden md:block ml-3">{item.name}</span>
-                    {isActive && <span className="absolute h-full w-1 bg-primary rounded-r-md left-0 top-0"></span>}
-                  </a>
+                  )}
+                >
+                  <div className="w-6 text-center">
+                    {item.icon}
+                  </div>
+                  <span className="hidden md:block ml-3">{item.name}</span>
+                  {isActive && <span className="absolute h-full w-1 bg-primary rounded-r-md left-0 top-0"></span>}
                 </Link>
               </li>
             );
