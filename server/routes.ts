@@ -11,6 +11,7 @@ import {
   insertSettingsSchema
 } from "@shared/schema";
 import { setupAuth } from "./auth";
+import { isAuthenticated, errorHandler } from "./middleware";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Create HTTP server
@@ -18,27 +19,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Setup authentication
   setupAuth(app);
-
-  // Users API
-  app.get('/api/user/me', async (req, res) => {
-    // For demo purposes, return a fixed user
-    const user = await storage.getUser(1);
-    res.json(user);
+  
+  // The /api/user endpoint is defined in auth.ts
+  // Redirect old endpoint to new one for backward compatibility
+  app.get('/api/user/me', (req, res) => {
+    res.redirect('/api/user');
   });
 
-  // Projects API
-  app.get('/api/projects', async (req, res) => {
-    const projects = await storage.getAllProjects();
-    res.json(projects);
-  });
-
-  app.post('/api/projects', async (req, res) => {
+  // Projects API - require authentication
+  app.get('/api/projects', isAuthenticated, async (req, res, next) => {
     try {
-      const data = insertProjectSchema.parse(req.body);
+      const projects = await storage.getAllProjects();
+      res.json(projects);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/projects', isAuthenticated, async (req, res, next) => {
+    try {
+      const userId = (req.user as any).id;
+      const data = insertProjectSchema.parse({
+        ...req.body,
+        userId
+      });
       const project = await storage.createProject(data);
       res.status(201).json(project);
     } catch (error) {
-      res.status(400).json({ message: "Invalid project data" });
+      next(error);
     }
   });
 
@@ -232,6 +240,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { volume } = req.body;
     res.status(200).json({ success: true, volume });
   });
+
+  // Register the error handler middleware
+  app.use(errorHandler);
 
   return httpServer;
 }
