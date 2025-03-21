@@ -6,8 +6,12 @@ import {
   File, InsertFile, 
   Event, InsertEvent, 
   Track, InsertTrack, 
-  Settings, InsertSettings
+  Settings, InsertSettings,
+  users, projects, tasks, timeEntries, files, events, tracks, settings
 } from "@shared/schema";
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { eq } from 'drizzle-orm';
+import { Pool } from '@neondatabase/serverless';
 
 // Interface defining all storage operations
 export interface IStorage {
@@ -553,4 +557,445 @@ export class MemStorage implements IStorage {
   }
 }
 
+// PostgreSQL storage implementation using Drizzle ORM
+export class PostgresStorage implements IStorage {
+  private db: ReturnType<typeof drizzle>;
+  
+  constructor() {
+    // Use the db connection from server/db.ts to ensure consistent configuration
+    import('./db').then(({ db }) => {
+      this.db = db;
+      
+      // Initialize the database with demo data if needed
+      this.initializeDatabase().catch(err => {
+        console.error("Error initializing database:", err);
+      });
+    }).catch(err => {
+      console.error("Error importing db module:", err);
+    });
+  }
+  
+  private async initializeDatabase() {
+    try {
+      // Check if users table is empty
+      const existingUsers = await this.db.select().from(users);
+      
+      if (existingUsers.length === 0) {
+        // Create demo user
+        const demoUser = await this.createUser({
+          username: "demouser",
+          password: "password",
+          email: "user@example.com",
+          displayName: "Demo User",
+          avatar: null
+        });
+        
+        // Create demo projects
+        const project1 = await this.createProject({
+          name: "Flow App UI/UX Design",
+          description: "Design and implement the user interface for the Flow application",
+          userId: demoUser.id,
+          color: "#8B5CF6"
+        });
+        
+        const project2 = await this.createProject({
+          name: "Client Project",
+          description: "Work for client X",
+          userId: demoUser.id,
+          color: "#EC4899"
+        });
+        
+        const project3 = await this.createProject({
+          name: "Personal",
+          description: "Personal tasks and activities",
+          userId: demoUser.id,
+          color: "#3B82F6"
+        });
+        
+        // Create demo tasks
+        const now = new Date();
+        const tomorrow = new Date();
+        tomorrow.setDate(now.getDate() + 1);
+        const yesterday = new Date();
+        yesterday.setDate(now.getDate() - 1);
+        
+        const task1 = await this.createTask({
+          title: "Implement Time Tracker UI",
+          description: "Create the user interface for time tracking feature",
+          userId: demoUser.id,
+          projectId: project1.id,
+          status: "in-progress",
+          estimatedTime: 180, // 3 hours
+          progress: 62,
+          dueDate: tomorrow,
+          createdAt: now
+        });
+        
+        const task2 = await this.createTask({
+          title: "Create wireframes for dashboard",
+          description: "Design wireframes for the main dashboard",
+          userId: demoUser.id,
+          projectId: project1.id,
+          status: "pending",
+          estimatedTime: 120, // 2 hours
+          progress: 0,
+          dueDate: now,
+          createdAt: now
+        });
+        
+        const task3 = await this.createTask({
+          title: "Client feedback meeting",
+          description: "Discuss progress and get feedback from the client",
+          userId: demoUser.id,
+          projectId: project2.id,
+          status: "upcoming",
+          estimatedTime: 60, // 1 hour
+          progress: 0,
+          dueDate: now,
+          createdAt: now
+        });
+        
+        const task4 = await this.createTask({
+          title: "Research design trends",
+          description: "Research current design trends for UI/UX",
+          userId: demoUser.id,
+          projectId: project1.id,
+          status: "completed",
+          estimatedTime: 90, // 1.5 hours
+          progress: 100,
+          dueDate: yesterday,
+          createdAt: yesterday
+        });
+        
+        // Create demo time entries
+        const timeEntry1 = await this.createTimeEntry({
+          userId: demoUser.id,
+          taskId: task1.id,
+          projectId: project1.id,
+          startTime: new Date(now.getTime() - 90 * 60000), // 1.5 hours ago
+          endTime: null,
+          duration: 5400, // 1.5 hours in seconds
+          description: "Working on time tracker UI"
+        });
+        
+        const timeEntry2 = await this.createTimeEntry({
+          userId: demoUser.id,
+          taskId: task4.id,
+          projectId: project1.id,
+          startTime: yesterday,
+          endTime: new Date(yesterday.getTime() + 75 * 60000), // 1.25 hours later
+          duration: 4500, // 1.25 hours in seconds
+          description: "Completed research on design trends"
+        });
+        
+        // Create demo settings
+        await this.updateSettings(demoUser.id, {
+          theme: "dark",
+          notificationsEnabled: true,
+          minimizeToTray: true,
+          preferences: {}
+        });
+      }
+    } catch (error) {
+      console.error("Error initializing database:", error);
+    }
+  }
+  
+  // User methods
+  async getUser(id: number): Promise<User | undefined> {
+    const result = await this.db.select().from(users).where(eq(users.id, id));
+    return result[0];
+  }
+  
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const result = await this.db.select().from(users).where(eq(users.username, username));
+    return result[0];
+  }
+  
+  async createUser(user: InsertUser): Promise<User> {
+    const result = await this.db.insert(users).values(user).returning();
+    return result[0];
+  }
+  
+  // Project methods
+  async getAllProjects(): Promise<Project[]> {
+    return this.db.select().from(projects);
+  }
+  
+  async getProject(id: number): Promise<Project | undefined> {
+    const result = await this.db.select().from(projects).where(eq(projects.id, id));
+    return result[0];
+  }
+  
+  async createProject(project: InsertProject): Promise<Project> {
+    const result = await this.db.insert(projects).values(project).returning();
+    return result[0];
+  }
+  
+  async updateProject(id: number, data: Partial<Project>): Promise<Project> {
+    const result = await this.db
+      .update(projects)
+      .set(data)
+      .where(eq(projects.id, id))
+      .returning();
+    
+    if (result.length === 0) {
+      throw new Error("Project not found");
+    }
+    
+    return result[0];
+  }
+  
+  async deleteProject(id: number): Promise<void> {
+    // Delete related tasks first (cascade delete)
+    await this.db.delete(tasks).where(eq(tasks.projectId, id));
+    
+    // Delete related time entries
+    await this.db.delete(timeEntries).where(eq(timeEntries.projectId, id));
+    
+    // Delete the project
+    const result = await this.db.delete(projects).where(eq(projects.id, id)).returning();
+    
+    if (result.length === 0) {
+      throw new Error("Project not found");
+    }
+  }
+  
+  // Task methods
+  async getAllTasks(): Promise<Task[]> {
+    return this.db.select().from(tasks);
+  }
+  
+  async getTask(id: number): Promise<Task | undefined> {
+    const result = await this.db.select().from(tasks).where(eq(tasks.id, id));
+    return result[0];
+  }
+  
+  async getTasksByProject(projectId: number): Promise<Task[]> {
+    return this.db.select().from(tasks).where(eq(tasks.projectId, projectId));
+  }
+  
+  async createTask(task: InsertTask): Promise<Task> {
+    const result = await this.db.insert(tasks).values({
+      ...task,
+      createdAt: task.createdAt || new Date()
+    }).returning();
+    return result[0];
+  }
+  
+  async updateTask(id: number, data: Partial<Task>): Promise<Task> {
+    const result = await this.db
+      .update(tasks)
+      .set(data)
+      .where(eq(tasks.id, id))
+      .returning();
+    
+    if (result.length === 0) {
+      throw new Error("Task not found");
+    }
+    
+    return result[0];
+  }
+  
+  async deleteTask(id: number): Promise<void> {
+    // Delete related time entries first
+    await this.db.delete(timeEntries).where(eq(timeEntries.taskId, id));
+    
+    // Delete the task
+    const result = await this.db.delete(tasks).where(eq(tasks.id, id)).returning();
+    
+    if (result.length === 0) {
+      throw new Error("Task not found");
+    }
+  }
+  
+  // Time entry methods
+  async getAllTimeEntries(): Promise<TimeEntry[]> {
+    return this.db.select().from(timeEntries);
+  }
+  
+  async getTimeEntry(id: number): Promise<TimeEntry | undefined> {
+    const result = await this.db.select().from(timeEntries).where(eq(timeEntries.id, id));
+    return result[0];
+  }
+  
+  async getTimeEntriesByTask(taskId: number): Promise<TimeEntry[]> {
+    return this.db.select().from(timeEntries).where(eq(timeEntries.taskId, taskId));
+  }
+  
+  async getTimeEntriesByProject(projectId: number): Promise<TimeEntry[]> {
+    return this.db.select().from(timeEntries).where(eq(timeEntries.projectId, projectId));
+  }
+  
+  async getCurrentTimeEntry(): Promise<TimeEntry | undefined> {
+    const result = await this.db
+      .select()
+      .from(timeEntries)
+      .where(eq(timeEntries.endTime, null));
+    return result[0];
+  }
+  
+  async createTimeEntry(entry: InsertTimeEntry): Promise<TimeEntry> {
+    // End any current time entry
+    const currentEntry = await this.getCurrentTimeEntry();
+    if (currentEntry) {
+      const now = new Date();
+      const duration = Math.floor((now.getTime() - new Date(currentEntry.startTime).getTime()) / 1000);
+      await this.updateTimeEntry(currentEntry.id, { 
+        endTime: now,
+        duration
+      });
+    }
+    
+    const result = await this.db.insert(timeEntries).values(entry).returning();
+    return result[0];
+  }
+  
+  async updateTimeEntry(id: number, data: Partial<TimeEntry>): Promise<TimeEntry> {
+    const result = await this.db
+      .update(timeEntries)
+      .set(data)
+      .where(eq(timeEntries.id, id))
+      .returning();
+    
+    if (result.length === 0) {
+      throw new Error("Time entry not found");
+    }
+    
+    return result[0];
+  }
+  
+  // File methods
+  async getAllFiles(): Promise<File[]> {
+    return this.db.select().from(files);
+  }
+  
+  async getFile(id: number): Promise<File | undefined> {
+    const result = await this.db.select().from(files).where(eq(files.id, id));
+    return result[0];
+  }
+  
+  async getFilesByTask(taskId: number): Promise<File[]> {
+    return this.db.select().from(files).where(eq(files.taskId, taskId));
+  }
+  
+  async getFilesByProject(projectId: number): Promise<File[]> {
+    return this.db.select().from(files).where(eq(files.projectId, projectId));
+  }
+  
+  async createFile(file: InsertFile): Promise<File> {
+    const result = await this.db.insert(files).values({
+      ...file,
+      uploadedAt: file.uploadedAt || new Date()
+    }).returning();
+    return result[0];
+  }
+  
+  async deleteFile(id: number): Promise<void> {
+    const result = await this.db.delete(files).where(eq(files.id, id)).returning();
+    
+    if (result.length === 0) {
+      throw new Error("File not found");
+    }
+  }
+  
+  // Event methods
+  async getAllEvents(): Promise<Event[]> {
+    return this.db.select().from(events);
+  }
+  
+  async getEvent(id: number): Promise<Event | undefined> {
+    const result = await this.db.select().from(events).where(eq(events.id, id));
+    return result[0];
+  }
+  
+  async createEvent(event: InsertEvent): Promise<Event> {
+    const result = await this.db.insert(events).values(event).returning();
+    return result[0];
+  }
+  
+  async updateEvent(id: number, data: Partial<Event>): Promise<Event> {
+    const result = await this.db
+      .update(events)
+      .set(data)
+      .where(eq(events.id, id))
+      .returning();
+    
+    if (result.length === 0) {
+      throw new Error("Event not found");
+    }
+    
+    return result[0];
+  }
+  
+  async deleteEvent(id: number): Promise<void> {
+    const result = await this.db.delete(events).where(eq(events.id, id)).returning();
+    
+    if (result.length === 0) {
+      throw new Error("Event not found");
+    }
+  }
+  
+  // Track methods
+  async getAllTracks(): Promise<Track[]> {
+    return this.db.select().from(tracks);
+  }
+  
+  async getTrack(id: number): Promise<Track | undefined> {
+    const result = await this.db.select().from(tracks).where(eq(tracks.id, id));
+    return result[0];
+  }
+  
+  async createTrack(track: InsertTrack): Promise<Track> {
+    const result = await this.db.insert(tracks).values({
+      ...track,
+      addedAt: track.addedAt || new Date()
+    }).returning();
+    return result[0];
+  }
+  
+  async deleteTrack(id: number): Promise<void> {
+    const result = await this.db.delete(tracks).where(eq(tracks.id, id)).returning();
+    
+    if (result.length === 0) {
+      throw new Error("Track not found");
+    }
+  }
+  
+  // Settings methods
+  async getSettings(userId: number): Promise<Settings | undefined> {
+    const result = await this.db.select().from(settings).where(eq(settings.userId, userId));
+    return result[0];
+  }
+  
+  async updateSettings(userId: number, data: Partial<Settings>): Promise<Settings> {
+    // Check if settings exist
+    const existingSettings = await this.getSettings(userId);
+    
+    if (existingSettings) {
+      // Update existing settings
+      const result = await this.db
+        .update(settings)
+        .set(data)
+        .where(eq(settings.userId, userId))
+        .returning();
+      return result[0];
+    } else {
+      // Create new settings
+      const result = await this.db.insert(settings).values({
+        userId,
+        theme: data.theme || "dark",
+        notificationsEnabled: data.notificationsEnabled !== undefined ? data.notificationsEnabled : true,
+        minimizeToTray: data.minimizeToTray !== undefined ? data.minimizeToTray : true,
+        preferences: data.preferences || {}
+      }).returning();
+      return result[0];
+    }
+  }
+}
+
+// Determine which storage implementation to use based on environment variables
+const usePostgres = false; // Temporarily set to false to force in-memory storage
+
+// Export the appropriate storage implementation 
 export const storage = new MemStorage();
