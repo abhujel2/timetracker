@@ -10,7 +10,7 @@ import {
   users, projects, tasks, timeEntries, files, events, tracks, settings
 } from "@shared/schema";
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { eq } from 'drizzle-orm';
+import { eq, isNull } from 'drizzle-orm';
 import { Pool } from '@neondatabase/serverless';
 
 // Interface defining all storage operations
@@ -994,8 +994,301 @@ export class PostgresStorage implements IStorage {
   }
 }
 
-// Determine which storage implementation to use based on environment variables
-const usePostgres = false; // Temporarily set to false to force in-memory storage
+// Implement the database storage class according to the blueprint
+import { db } from './db';
 
-// Export the appropriate storage implementation 
+// Database storage implementation using Drizzle ORM
+export class DatabaseStorage implements IStorage {
+  // User methods
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(insertUser)
+      .returning();
+    return user;
+  }
+
+  // Project methods
+  async getAllProjects(): Promise<Project[]> {
+    return db.select().from(projects);
+  }
+
+  async getProject(id: number): Promise<Project | undefined> {
+    const [project] = await db.select().from(projects).where(eq(projects.id, id));
+    return project;
+  }
+
+  async createProject(project: InsertProject): Promise<Project> {
+    const [newProject] = await db.insert(projects).values(project).returning();
+    return newProject;
+  }
+
+  async updateProject(id: number, data: Partial<Project>): Promise<Project> {
+    const [updated] = await db
+      .update(projects)
+      .set(data)
+      .where(eq(projects.id, id))
+      .returning();
+    
+    if (!updated) {
+      throw new Error("Project not found");
+    }
+    
+    return updated;
+  }
+
+  async deleteProject(id: number): Promise<void> {
+    // Delete related tasks first (cascade delete)
+    await db.delete(tasks).where(eq(tasks.projectId, id));
+    
+    // Delete related time entries
+    await db.delete(timeEntries).where(eq(timeEntries.projectId, id));
+    
+    // Delete the project
+    const result = await db.delete(projects).where(eq(projects.id, id)).returning();
+    
+    if (result.length === 0) {
+      throw new Error("Project not found");
+    }
+  }
+
+  // Task methods
+  async getAllTasks(): Promise<Task[]> {
+    return db.select().from(tasks);
+  }
+
+  async getTask(id: number): Promise<Task | undefined> {
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
+    return task;
+  }
+
+  async getTasksByProject(projectId: number): Promise<Task[]> {
+    return db.select().from(tasks).where(eq(tasks.projectId, projectId));
+  }
+
+  async createTask(task: InsertTask): Promise<Task> {
+    const [newTask] = await db.insert(tasks).values(task).returning();
+    return newTask;
+  }
+
+  async updateTask(id: number, data: Partial<Task>): Promise<Task> {
+    const [updated] = await db
+      .update(tasks)
+      .set(data)
+      .where(eq(tasks.id, id))
+      .returning();
+    
+    if (!updated) {
+      throw new Error("Task not found");
+    }
+    
+    return updated;
+  }
+
+  async deleteTask(id: number): Promise<void> {
+    // Delete related time entries first
+    await db.delete(timeEntries).where(eq(timeEntries.taskId, id));
+    
+    // Delete the task
+    const result = await db.delete(tasks).where(eq(tasks.id, id)).returning();
+    
+    if (result.length === 0) {
+      throw new Error("Task not found");
+    }
+  }
+
+  // Time entry methods
+  async getAllTimeEntries(): Promise<TimeEntry[]> {
+    return db.select().from(timeEntries);
+  }
+
+  async getTimeEntry(id: number): Promise<TimeEntry | undefined> {
+    const [entry] = await db.select().from(timeEntries).where(eq(timeEntries.id, id));
+    return entry;
+  }
+
+  async getTimeEntriesByTask(taskId: number): Promise<TimeEntry[]> {
+    return db.select().from(timeEntries).where(eq(timeEntries.taskId, taskId));
+  }
+
+  async getTimeEntriesByProject(projectId: number): Promise<TimeEntry[]> {
+    return db.select().from(timeEntries).where(eq(timeEntries.projectId, projectId));
+  }
+
+  async getCurrentTimeEntry(): Promise<TimeEntry | undefined> {
+    const [entry] = await db
+      .select()
+      .from(timeEntries)
+      .where(eq(timeEntries.endTime, null));
+    return entry;
+  }
+
+  async createTimeEntry(entry: InsertTimeEntry): Promise<TimeEntry> {
+    // End any current time entry
+    const currentEntry = await this.getCurrentTimeEntry();
+    if (currentEntry) {
+      const now = new Date();
+      const duration = Math.floor((now.getTime() - new Date(currentEntry.startTime).getTime()) / 1000);
+      await this.updateTimeEntry(currentEntry.id, { 
+        endTime: now,
+        duration
+      });
+    }
+    
+    const [newEntry] = await db.insert(timeEntries).values(entry).returning();
+    return newEntry;
+  }
+
+  async updateTimeEntry(id: number, data: Partial<TimeEntry>): Promise<TimeEntry> {
+    const [updated] = await db
+      .update(timeEntries)
+      .set(data)
+      .where(eq(timeEntries.id, id))
+      .returning();
+    
+    if (!updated) {
+      throw new Error("Time entry not found");
+    }
+    
+    return updated;
+  }
+
+  // File methods
+  async getAllFiles(): Promise<File[]> {
+    return db.select().from(files);
+  }
+
+  async getFile(id: number): Promise<File | undefined> {
+    const [file] = await db.select().from(files).where(eq(files.id, id));
+    return file;
+  }
+
+  async getFilesByTask(taskId: number): Promise<File[]> {
+    return db.select().from(files).where(eq(files.taskId, taskId));
+  }
+
+  async getFilesByProject(projectId: number): Promise<File[]> {
+    return db.select().from(files).where(eq(files.projectId, projectId));
+  }
+
+  async createFile(file: InsertFile): Promise<File> {
+    const [newFile] = await db.insert(files).values(file).returning();
+    return newFile;
+  }
+
+  async deleteFile(id: number): Promise<void> {
+    const result = await db.delete(files).where(eq(files.id, id)).returning();
+    
+    if (result.length === 0) {
+      throw new Error("File not found");
+    }
+  }
+
+  // Event methods
+  async getAllEvents(): Promise<Event[]> {
+    return db.select().from(events);
+  }
+
+  async getEvent(id: number): Promise<Event | undefined> {
+    const [event] = await db.select().from(events).where(eq(events.id, id));
+    return event;
+  }
+
+  async createEvent(event: InsertEvent): Promise<Event> {
+    const [newEvent] = await db.insert(events).values(event).returning();
+    return newEvent;
+  }
+
+  async updateEvent(id: number, data: Partial<Event>): Promise<Event> {
+    const [updated] = await db
+      .update(events)
+      .set(data)
+      .where(eq(events.id, id))
+      .returning();
+    
+    if (!updated) {
+      throw new Error("Event not found");
+    }
+    
+    return updated;
+  }
+
+  async deleteEvent(id: number): Promise<void> {
+    const result = await db.delete(events).where(eq(events.id, id)).returning();
+    
+    if (result.length === 0) {
+      throw new Error("Event not found");
+    }
+  }
+
+  // Track methods
+  async getAllTracks(): Promise<Track[]> {
+    return db.select().from(tracks);
+  }
+
+  async getTrack(id: number): Promise<Track | undefined> {
+    const [track] = await db.select().from(tracks).where(eq(tracks.id, id));
+    return track;
+  }
+
+  async createTrack(track: InsertTrack): Promise<Track> {
+    const [newTrack] = await db.insert(tracks).values(track).returning();
+    return newTrack;
+  }
+
+  async deleteTrack(id: number): Promise<void> {
+    const result = await db.delete(tracks).where(eq(tracks.id, id)).returning();
+    
+    if (result.length === 0) {
+      throw new Error("Track not found");
+    }
+  }
+
+  // Settings methods
+  async getSettings(userId: number): Promise<Settings | undefined> {
+    const [userSettings] = await db.select().from(settings).where(eq(settings.userId, userId));
+    return userSettings;
+  }
+
+  async updateSettings(userId: number, data: Partial<Settings>): Promise<Settings> {
+    // Check if settings exist
+    const existingSettings = await this.getSettings(userId);
+    
+    if (existingSettings) {
+      // Update existing settings
+      const [updated] = await db
+        .update(settings)
+        .set(data)
+        .where(eq(settings.userId, userId))
+        .returning();
+      return updated;
+    } else {
+      // Create new settings
+      const [newSettings] = await db.insert(settings).values({
+        userId,
+        theme: data.theme || "dark",
+        notificationsEnabled: data.notificationsEnabled !== undefined ? data.notificationsEnabled : true,
+        minimizeToTray: data.minimizeToTray !== undefined ? data.minimizeToTray : true,
+        preferences: data.preferences || {}
+      }).returning();
+      return newSettings;
+    }
+  }
+}
+
+// Determine which storage implementation to use based on environment variables
+const usePostgres = !!process.env.DATABASE_URL;
+
+// Export the appropriate storage implementation
+// For now, let's use MemStorage while we fully test DatabaseStorage
 export const storage = new MemStorage();
