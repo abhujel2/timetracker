@@ -9,8 +9,6 @@ import { User as SelectUser } from "@shared/schema";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
 
-const PostgresSessionStore = connectPg(session);
-
 declare global {
   namespace Express {
     interface User extends SelectUser {}
@@ -33,19 +31,22 @@ async function comparePasswords(supplied: string, stored: string) {
 }
 
 export function setupAuth(app: Express) {
-  const sessionStore = new PostgresSessionStore({ 
+  // Use PostgreSQL for session store
+  const PostgresSessionStore = connectPg(session);
+  const sessionStore = new PostgresSessionStore({
     pool,
-    createTableIfMissing: true 
+    tableName: 'user_sessions',
+    createTableIfMissing: true
   });
 
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET || "dev-secret-should-be-env-var",
+    secret: process.env.SESSION_SECRET || "developmentsecret",
     resave: false,
     saveUninitialized: false,
     store: sessionStore,
     cookie: {
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 1 week
       secure: process.env.NODE_ENV === "production",
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
     }
   };
 
@@ -79,29 +80,32 @@ export function setupAuth(app: Express) {
     }
   });
 
+  // Auth endpoints
   app.post("/api/auth/signup", async (req, res, next) => {
     try {
       const { username, password, email, displayName } = req.body;
       
+      // Check if username already exists
       const existingUser = await storage.getUserByUsername(username);
       if (existingUser) {
-        return res.status(400).json({ error: "Username already exists" });
+        return res.status(400).json({ message: "Username already exists" });
       }
 
-      const hashedPassword = await hashPassword(password);
-      
+      // Create user with hashed password
       const user = await storage.createUser({
         username,
-        password: hashedPassword,
+        password: await hashPassword(password),
         email: email || null,
         displayName: displayName || null,
         avatar: null
       });
 
+      // Remove password from response
+      const { password: _, ...userWithoutPassword } = user;
+
+      // Log in the user
       req.login(user, (err) => {
         if (err) return next(err);
-        // Don't send the password in the response
-        const { password, ...userWithoutPassword } = user;
         res.status(201).json(userWithoutPassword);
       });
     } catch (error) {
@@ -109,23 +113,38 @@ export function setupAuth(app: Express) {
     }
   });
 
-  app.post("/api/auth/login", passport.authenticate("local"), (req, res) => {
-    // Don't send the password in the response
-    const { password, ...userWithoutPassword } = req.user as SelectUser;
-    res.status(200).json(userWithoutPassword);
+  app.post("/api/auth/login", (req, res, next) => {
+    passport.authenticate("local", (err, user, info) => {
+      if (err) {
+        return next(err);
+      }
+      if (!user) {
+        return res.status(401).json({ message: "Invalid username or password" });
+      }
+      req.login(user, (loginErr) => {
+        if (loginErr) {
+          return next(loginErr);
+        }
+        // Remove password from response
+        const { password: _, ...userWithoutPassword } = user;
+        return res.json(userWithoutPassword);
+      });
+    })(req, res, next);
   });
 
   app.post("/api/auth/logout", (req, res, next) => {
     req.logout((err) => {
       if (err) return next(err);
-      res.sendStatus(200);
+      res.status(200).json({ message: "Logged out successfully" });
     });
   });
 
   app.get("/api/user", (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ error: "Not authenticated" });
-    // Don't send the password in the response
-    const { password, ...userWithoutPassword } = req.user as SelectUser;
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    // Remove password from response
+    const { password: _, ...userWithoutPassword } = req.user as SelectUser;
     res.json(userWithoutPassword);
   });
 }
