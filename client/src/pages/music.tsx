@@ -23,6 +23,7 @@ import {
   Disc3,
 } from 'lucide-react';
 import { FaSpotify } from 'react-icons/fa';
+import SpotifySetupDialog from '@/components/dialogs/SpotifySetupDialog';
 
 export default function Music() {
   const { spotify } = useAppContext();
@@ -109,10 +110,12 @@ export default function Music() {
                 <p className="text-muted-foreground text-sm mt-2 mb-6">
                   Link your Spotify account to play your music library and playlists directly from the app.
                 </p>
-                <Button onClick={spotify.connect} className="w-full">
-                  <FaSpotify className="mr-2 h-4 w-4" />
-                  Connect Spotify Account
-                </Button>
+                <SpotifySetupDialog>
+                  <Button onClick={spotify.connect} className="w-full">
+                    <FaSpotify className="mr-2 h-4 w-4" />
+                    Connect Spotify Account
+                  </Button>
+                </SpotifySetupDialog>
               </div>
             )}
           </CardContent>
@@ -210,10 +213,12 @@ export default function Music() {
                   <p className="text-muted-foreground mt-2 mb-6">
                     Your recently played tracks will appear here
                   </p>
-                  <Button onClick={spotify.connect}>
-                    <FaSpotify className="mr-2 h-4 w-4" />
-                    Connect to Spotify
-                  </Button>
+                  <SpotifySetupDialog>
+                    <Button onClick={spotify.connect}>
+                      <FaSpotify className="mr-2 h-4 w-4" />
+                      Connect to Spotify
+                    </Button>
+                  </SpotifySetupDialog>
                 </div>
               </TabsContent>
               
