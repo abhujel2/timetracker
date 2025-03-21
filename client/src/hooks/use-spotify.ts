@@ -64,20 +64,39 @@ export function useSpotify() {
     },
     onSuccess: (data) => {
       // Open the authorization URL in a new window
-      window.open(data.authUrl, '_blank');
+      const authWindow = window.open(data.authUrl, '_blank', 'width=500,height=700');
       
-      // Poll for connection status
-      const interval = setInterval(async () => {
-        const { data } = await checkConnection();
-        if (data?.connected) {
+      // Add event listener for message from popup window
+      const messageHandler = (event: MessageEvent) => {
+        if (event.data === 'spotify-connected') {
           setSpotifyState(prev => ({ ...prev, isConnected: true }));
-          clearInterval(interval);
           queryClient.invalidateQueries({ queryKey: ['/api/spotify'] });
+          window.removeEventListener('message', messageHandler);
+        }
+      };
+      
+      window.addEventListener('message', messageHandler);
+      
+      // Also poll for connection status in case the popup is closed or blocked
+      const interval = setInterval(async () => {
+        try {
+          const { data } = await checkConnection();
+          if (data?.connected) {
+            setSpotifyState(prev => ({ ...prev, isConnected: true }));
+            clearInterval(interval);
+            queryClient.invalidateQueries({ queryKey: ['/api/spotify'] });
+            window.removeEventListener('message', messageHandler);
+          }
+        } catch (error) {
+          console.error('Error checking Spotify connection:', error);
         }
       }, 2000);
       
       // Clear interval after 2 minutes (if user doesn't complete auth)
-      setTimeout(() => clearInterval(interval), 120000);
+      setTimeout(() => {
+        clearInterval(interval);
+        window.removeEventListener('message', messageHandler);
+      }, 120000);
     },
   });
 

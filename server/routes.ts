@@ -192,18 +192,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Spotify API (mock implementation since we don't have actual Spotify credentials)
+  // Spotify API 
+  // Mock implementation that can be easily replaced with a real Spotify API integration
+  const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
+  const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
+  const SPOTIFY_REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI || 'http://localhost:5000/api/spotify/callback';
+  
+  // Keep track of if a user has connected their Spotify account
+  // In a real implementation, this would be stored in the database
+  let spotifyConnected = true;
+  let spotifyTokens = {
+    access_token: null,
+    refresh_token: null
+  };
+
   app.get('/api/spotify/status', (req, res) => {
-    res.json({ connected: true });
+    // Check if user is logged in before checking Spotify
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    
+    res.json({ connected: spotifyConnected });
   });
 
-  app.get('/api/spotify/connect', (req, res) => {
-    res.json({ 
-      authUrl: "https://accounts.spotify.com/authorize" // Mock URL
-    });
+  app.get('/api/spotify/connect', isAuthenticated, (req, res) => {
+    // In a real implementation, this would use the Spotify Web API to get an auth URL
+    const scopes = [
+      'user-read-playback-state',
+      'user-modify-playback-state',
+      'user-read-currently-playing'
+    ].join(' ');
+    
+    // If we have client ID, construct a real auth URL, otherwise use a mock
+    let authUrl = "https://accounts.spotify.com/authorize";
+    
+    if (SPOTIFY_CLIENT_ID) {
+      authUrl = `https://accounts.spotify.com/authorize?client_id=${SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(SPOTIFY_REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}`;
+    }
+    
+    res.json({ authUrl });
   });
 
-  app.get('/api/spotify/current-track', (req, res) => {
+  app.get('/api/spotify/callback', (req, res) => {
+    // This would handle the OAuth callback from Spotify
+    // For now, we'll just set connected to true
+    spotifyConnected = true;
+    
+    // Close the popup and redirect back to the music page
+    res.send(`
+      <script>
+        window.opener.postMessage('spotify-connected', '*');
+        window.close();
+      </script>
+    `);
+  });
+
+  app.get('/api/spotify/current-track', isAuthenticated, (req, res) => {
+    // In a real implementation, this would call the Spotify API with the user's access token
     res.json({
       is_playing: true,
       progress_ms: 30000,
@@ -220,24 +265,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  app.post('/api/spotify/play', (req, res) => {
+  app.post('/api/spotify/play', isAuthenticated, (req, res) => {
+    // In a real implementation, this would call the Spotify API to play music
     res.status(200).json({ success: true });
   });
 
-  app.post('/api/spotify/pause', (req, res) => {
+  app.post('/api/spotify/pause', isAuthenticated, (req, res) => {
+    // In a real implementation, this would call the Spotify API to pause music
     res.status(200).json({ success: true });
   });
 
-  app.post('/api/spotify/next', (req, res) => {
+  app.post('/api/spotify/next', isAuthenticated, (req, res) => {
+    // In a real implementation, this would call the Spotify API to skip to the next track
     res.status(200).json({ success: true });
   });
 
-  app.post('/api/spotify/previous', (req, res) => {
+  app.post('/api/spotify/previous', isAuthenticated, (req, res) => {
+    // In a real implementation, this would call the Spotify API to go to the previous track
     res.status(200).json({ success: true });
   });
 
-  app.post('/api/spotify/volume', (req, res) => {
+  app.post('/api/spotify/volume', isAuthenticated, (req, res) => {
     const { volume } = req.body;
+    // In a real implementation, this would call the Spotify API to set the volume
     res.status(200).json({ success: true, volume });
   });
 

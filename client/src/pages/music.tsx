@@ -65,37 +65,56 @@ export default function Music() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="relative">
-              <SearchIcon className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Search playlists..." 
-                className="pl-9" 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            
-            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
-              {playlists.map(playlist => (
-                <div 
-                  key={playlist.id} 
-                  className="flex items-center space-x-3 p-2 rounded-md hover:bg-accent/50 cursor-pointer transition-colors"
-                >
-                  <div className="w-10 h-10 rounded-md overflow-hidden">
-                    <img src={playlist.cover} alt={playlist.name} className="object-cover w-full h-full" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{playlist.name}</div>
-                    <div className="text-xs text-muted-foreground">{playlist.tracks} tracks</div>
-                  </div>
+            {spotify.isConnected ? (
+              <>
+                <div className="relative">
+                  <SearchIcon className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    placeholder="Search playlists..." 
+                    className="pl-9" 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
                 </div>
-              ))}
-            </div>
-            
-            <Button variant="outline" className="w-full mt-2">
-              <FaSpotify className="mr-2 h-4 w-4" />
-              Connect to Spotify
-            </Button>
+                
+                <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
+                  {playlists.map(playlist => (
+                    <div 
+                      key={playlist.id} 
+                      className="flex items-center space-x-3 p-2 rounded-md hover:bg-accent/50 cursor-pointer transition-colors"
+                    >
+                      <div className="w-10 h-10 rounded-md overflow-hidden">
+                        <img src={playlist.cover} alt={playlist.name} className="object-cover w-full h-full" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{playlist.name}</div>
+                        <div className="text-xs text-muted-foreground">{playlist.tracks} tracks</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Connected to Spotify</span>
+                  <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">
+                    <FaSpotify className="mr-1 h-3 w-3" />
+                    Active
+                  </Badge>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-8">
+                <FaSpotify className="h-16 w-16 mx-auto text-primary opacity-20 mb-4" />
+                <h3 className="text-lg font-medium">Connect to Spotify</h3>
+                <p className="text-muted-foreground text-sm mt-2 mb-6">
+                  Link your Spotify account to play your music library and playlists directly from the app.
+                </p>
+                <Button onClick={spotify.connect} className="w-full">
+                  <FaSpotify className="mr-2 h-4 w-4" />
+                  Connect Spotify Account
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
         
