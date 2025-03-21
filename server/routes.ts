@@ -10,10 +10,14 @@ import {
   insertTrackSchema, 
   insertSettingsSchema
 } from "@shared/schema";
+import { setupAuth } from "./auth";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Create HTTP server
   const httpServer = createServer(app);
+  
+  // Setup authentication
+  setupAuth(app);
 
   // Users API
   app.get('/api/user/me', async (req, res) => {
